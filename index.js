@@ -33,7 +33,22 @@ async function run() {
     const db = client.db("zapShift_Db");
     const parcelsCollection = db.collection("parcels");
 
-    
+    //? parcel api for getting all the parcels
+    app.get("/parcels", async (req, res) => {
+      try {
+        const cursor = parcelsCollection.find();
+        const result = await cursor.toArray();
+        res.json({
+          status: "ok",
+          result: result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: "Error",
+          message: "Failed to fetch parcels",
+        });
+      }
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log("Successfully connected to MongoDB!");
