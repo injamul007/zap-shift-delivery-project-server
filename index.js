@@ -50,6 +50,24 @@ async function run() {
       }
     });
 
+    //? post api for creating parcels post in the database
+    app.post("/parcels", async (req, res) => {
+      try {
+        const newParcel = req.body;
+        const result = await parcelsCollection.insertOne(newParcel);
+        res.status(201).json({
+          status: "ok",
+          message: "parcel created successfully",
+          result: result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: "Error",
+          message: "Failed to post parcels"
+        })
+      }
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log("Successfully connected to MongoDB!");
   } finally {
