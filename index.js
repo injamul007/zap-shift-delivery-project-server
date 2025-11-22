@@ -36,7 +36,12 @@ async function run() {
     //? parcel api for getting all the parcels
     app.get("/parcels", async (req, res) => {
       try {
-        const cursor = parcelsCollection.find();
+        const email = req.query.email
+        const query = {}
+        if(email) {
+          query.senderEmail = email
+        }
+        const cursor = parcelsCollection.find(query);
         const result = await cursor.toArray();
         res.json({
           status: "ok",
