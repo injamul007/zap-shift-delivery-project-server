@@ -56,6 +56,43 @@ async function run() {
       }
     });
 
+    //? get api for getting single parcel data from database
+    app.get("/parcels/:id", async(req,res) => {
+      try {
+        const parcelId = req.params.id;
+
+        //? Validate Object id
+        if(!ObjectId.isValid(parcelId)) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid Object Id format"
+          })
+        }
+
+        const query = {_id: new ObjectId(parcelId)}
+        const result = await parcelsCollection.findOne(query)
+
+        //? Validate result if not found
+        if(!result) {
+          return res.status(404).json({
+            status: "error",
+            message: "Parcel not found"
+          })
+        }
+
+        res.status(200).json({
+          status: "ok",
+          message: "Fetch Single Parcel Data successfully",
+          result: result
+        })
+      } catch (error) {
+        res.status(500).json({
+          status: "error",
+          message: "Failed to fetch single parcel data"
+        })
+      }
+    })
+
     //? post api for creating parcels post in the database
     app.post("/parcels", async (req, res) => {
       try {
