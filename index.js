@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const port = process.env.PORT || 3000;
 
@@ -36,12 +36,12 @@ async function run() {
     //? parcel api for getting all the parcels
     app.get("/parcels", async (req, res) => {
       try {
-        const email = req.query.email
-        const query = {}
-        if(email) {
-          query.senderEmail = email
+        const email = req.query.email;
+        const query = {};
+        if (email) {
+          query.senderEmail = email;
         }
-        const options = {sort: {createdAt: -1}}
+        const options = { sort: { createdAt: -1 } };
         const cursor = parcelsCollection.find(query, options);
         const result = await cursor.toArray();
         res.json({
@@ -71,7 +71,26 @@ async function run() {
       } catch (error) {
         res.status(500).json({
           status: "Error",
-          message: "Failed to post parcels"
+          message: "Failed to post parcels",
+        });
+      }
+    });
+
+    //? Delete api for delete the parcel from database
+    app.delete("/parcels/:id", async (req, res) => {
+      try {
+        const parcelId = req.params.id;
+        const query = { _id: new ObjectId(parcelId) };
+        const result = await parcelsCollection.deleteOne(query);
+        res.status(204).json({
+          status: "ok",
+          message: "Delete parcel from api is successful",
+          result: result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: "error",
+          message: "Failed to Delete from API"
         })
       }
     });
