@@ -41,7 +41,8 @@ async function run() {
         if(email) {
           query.senderEmail = email
         }
-        const cursor = parcelsCollection.find(query);
+        const options = {sort: {createdAt: -1}}
+        const cursor = parcelsCollection.find(query, options);
         const result = await cursor.toArray();
         res.json({
           status: "ok",
