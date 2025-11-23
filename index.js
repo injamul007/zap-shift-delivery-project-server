@@ -82,7 +82,7 @@ async function run() {
         const parcelId = req.params.id;
         const query = { _id: new ObjectId(parcelId) };
         const result = await parcelsCollection.deleteOne(query);
-        res.status(204).json({
+        res.status(200).json({
           status: "ok",
           message: "Delete parcel from api is successful",
           result: result,
