@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
 require("dotenv").config();
 const port = process.env.PORT || 3000;
 
@@ -57,41 +58,41 @@ async function run() {
     });
 
     //? get api for getting single parcel data from database
-    app.get("/parcels/:id", async(req,res) => {
+    app.get("/parcels/:id", async (req, res) => {
       try {
         const parcelId = req.params.id;
 
         //? Validate Object id
-        if(!ObjectId.isValid(parcelId)) {
+        if (!ObjectId.isValid(parcelId)) {
           return res.status(400).json({
             status: "error",
-            message: "Invalid Object Id format"
-          })
+            message: "Invalid Object Id format",
+          });
         }
 
-        const query = {_id: new ObjectId(parcelId)}
-        const result = await parcelsCollection.findOne(query)
+        const query = { _id: new ObjectId(parcelId) };
+        const result = await parcelsCollection.findOne(query);
 
         //? Validate result if not found
-        if(!result) {
+        if (!result) {
           return res.status(404).json({
             status: "error",
-            message: "Parcel not found"
-          })
+            message: "Parcel not found",
+          });
         }
 
         res.status(200).json({
           status: "ok",
           message: "Fetch Single Parcel Data successfully",
-          result: result
-        })
+          result: result,
+        });
       } catch (error) {
         res.status(500).json({
           status: "error",
-          message: "Failed to fetch single parcel data"
-        })
+          message: "Failed to fetch single parcel data",
+        });
       }
-    })
+    });
 
     //? post api for creating parcels post in the database
     app.post("/parcels", async (req, res) => {
@@ -127,7 +128,48 @@ async function run() {
       } catch (error) {
         res.status(500).json({
           status: "error",
-          message: "Failed to Delete from API"
+          message: "Failed to Delete from API",
+        });
+      }
+    });
+
+    //? Payment Related APIs
+    app.post("/create-checkout-session", async (req, res) => {
+      try {
+        const paymentInfo = req.body;
+        const amount = parseInt(paymentInfo.cost) * 100;
+        const session = await stripe.checkout.sessions.create({
+          line_items: [
+            {
+              price_data: {
+                currency: "USD",
+                unit_amount: amount,
+                product_data: {
+                  name: paymentInfo.parcelName,
+                },
+              },
+              quantity: 1,
+            },
+          ],
+          customer_email: paymentInfo.senderEmail,
+          mode: "payment",
+          metadata: {
+            parcelId: paymentInfo.parcelId,
+          },
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+        });
+
+        console.log(session);
+        res.status(200).json({
+          status: "ok",
+          message: "Payment Api post created successfully",
+          url: session.url,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: "ok",
+          message: "Failed to create checkout session"
         })
       }
     });
