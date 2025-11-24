@@ -1,10 +1,10 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const stripe = require("stripe")(`${process.env.STRIPE_SECRET}`);
-require("dotenv").config();
 const port = process.env.PORT || 3000;
+const stripe = require("stripe")(`${process.env.STRIPE_SECRET}`);
 
 //? Middlewares
 app.use(cors());
@@ -137,7 +137,14 @@ async function run() {
     app.post("/create-checkout-session", async (req, res) => {
       try {
         const paymentInfo = req.body;
-        const amount = parseInt(paymentInfo.cost) * 100;
+        //? validate cost if not correctly found
+        if (!paymentInfo || !paymentInfo.cost || isNaN(paymentInfo.cost)) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid cost amount",
+          });
+        }
+        const amount = Math.round(Number(paymentInfo.cost) * 100);
         const session = await stripe.checkout.sessions.create({
           line_items: [
             {
@@ -164,13 +171,13 @@ async function run() {
         res.status(200).json({
           status: "ok",
           message: "Payment Api post created successfully",
-          url: session.url,
+          url: session.url
         });
       } catch (error) {
         res.status(500).json({
-          status: "ok",
-          message: "Failed to create checkout session"
-        })
+          status: "error",
+          message: "Failed to create checkout session",
+        });
       }
     });
 
