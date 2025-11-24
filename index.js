@@ -134,16 +134,18 @@ async function run() {
     });
 
     //? Payment Related APIs
-    app.post("/create-checkout-session", async (req, res) => {
+    app.post("/payment-checkout-session", async (req, res) => {
       try {
         const paymentInfo = req.body;
-        //? validate cost if not correctly found
+
+        //? Validate payment cost if not found in correct value
         if (!paymentInfo || !paymentInfo.cost || isNaN(paymentInfo.cost)) {
           return res.status(400).json({
             status: "error",
-            message: "Invalid cost amount",
+            message: "Invalid Cost type",
           });
         }
+
         const amount = Math.round(Number(paymentInfo.cost) * 100);
         const session = await stripe.checkout.sessions.create({
           line_items: [
@@ -152,32 +154,62 @@ async function run() {
                 currency: "USD",
                 unit_amount: amount,
                 product_data: {
-                  name: paymentInfo.parcelName,
+                  name: `Please Pay for ${paymentInfo.parcelName}`,
                 },
               },
               quantity: 1,
             },
           ],
-          customer_email: paymentInfo.senderEmail,
           mode: "payment",
           metadata: {
             parcelId: paymentInfo.parcelId,
           },
-          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+          customer_email: paymentInfo.senderEmail,
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
         });
 
         console.log(session);
         res.status(200).json({
           status: "ok",
-          message: "Payment Api post created successfully",
-          url: session.url
+          message: "Payment post api created successfully",
+          url: session.url,
         });
       } catch (error) {
         res.status(500).json({
           status: "error",
-          message: "Failed to create checkout session",
+          message: "Failed to create payment session data",
         });
+      }
+    });
+
+    //? payment api PATCH for getting session id
+    app.patch("/payment-success", async (req, res) => {
+      try {
+        const sessionId = req.query.session_id;
+
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        if(session.payment_status === "paid") {
+          const query = {_id: new ObjectId(session.metadata.parcelId)}
+          const update = {
+            $set: {
+              paymentStatus: "paid"
+            }
+          }
+          const result = await parcelsCollection.updateOne(query, update)
+
+          res.status(200).json({
+          status: "ok",
+          message: "Payment Session id getting success",
+          result: result
+        });
+        }
+      } catch (error) {
+        res.status(500).json({
+          status: "ok",
+          message: "Failed to retrieve session id"
+        })
       }
     });
 
