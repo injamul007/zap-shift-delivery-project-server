@@ -138,12 +138,12 @@ async function run() {
       try {
         const paymentInfo = req.body;
 
-        //? Validate payment cost if not found in correct value
-        if (!paymentInfo || !paymentInfo.cost || isNaN(paymentInfo.cost)) {
+        //? validate payment cost
+        if(!paymentInfo || !paymentInfo.cost || isNaN(paymentInfo.cost) || paymentInfo.cost <= 0) {
           return res.status(400).json({
-            status: "error",
-            message: "Invalid Cost type",
-          });
+            status: false,
+            message: "Invalid Payment cost type"
+          })
         }
 
         const amount = Math.round(Number(paymentInfo.cost) * 100);
@@ -151,67 +151,69 @@ async function run() {
           line_items: [
             {
               price_data: {
-                currency: "USD",
+                currency: 'usd',
                 unit_amount: amount,
                 product_data: {
-                  name: `Please Pay for ${paymentInfo.parcelName}`,
-                },
+                  name: paymentInfo?.parcelName,
+                }
               },
               quantity: 1,
             },
           ],
           mode: "payment",
+          customer_email: paymentInfo?.senderEmail || undefined,
           metadata: {
-            parcelId: paymentInfo.parcelId,
+            parcelId: paymentInfo?.parcelId || "",
           },
-          customer_email: paymentInfo.senderEmail,
           success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
         });
-
-        console.log(session);
-        res.status(200).json({
-          status: "ok",
-          message: "Payment post api created successfully",
-          url: session.url,
-        });
+        console.log(session)
+        res.status(201).json({
+          status: true,
+          message: "Payment checkout session created Successful",
+          url : session.url,
+        })
       } catch (error) {
         res.status(500).json({
-          status: "error",
-          message: "Failed to create payment session data",
-        });
-      }
-    });
-
-    //? payment api PATCH for getting session id
-    app.patch("/payment-success", async (req, res) => {
-      try {
-        const sessionId = req.query.session_id;
-
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-        if(session.payment_status === "paid") {
-          const query = {_id: new ObjectId(session.metadata.parcelId)}
-          const update = {
-            $set: {
-              paymentStatus: "paid"
-            }
-          }
-          const result = await parcelsCollection.updateOne(query, update)
-
-          res.status(200).json({
-          status: "ok",
-          message: "Payment Session id getting success",
-          result: result
-        });
-        }
-      } catch (error) {
-        res.status(500).json({
-          status: "ok",
-          message: "Failed to retrieve session id"
+          status: false,
+          message: "Failed to create payment checkout session api",
+          error: error.message,
         })
       }
     });
+
+    //? patch payment data 
+    app.patch("/payment-success", async(req,res) => {
+      try {
+        const sessionId = req.query.session_id;
+        
+        const session = await stripe.checkout.sessions.retrieve(sessionId)
+        console.log(session)
+
+        if(session.payment_status === "paid") {
+          const id = session?.metadata?.parcelId
+          const query = {_id: new ObjectId(id)}
+          const update = {
+            $set: {
+              paymentStatus: "paid",
+            }
+          }
+          const result = await parcelsCollection.updateOne(query, update)
+          res.status(200).json({
+            status: true,
+            message: "Payment Patch successful",
+            result,
+          })
+        }
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to Patch payment",
+          error: error.message,
+        })
+      }
+    })
 
     await client.db("admin").command({ ping: 1 });
     console.log("Successfully connected to MongoDB!");
