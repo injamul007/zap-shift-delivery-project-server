@@ -25,7 +25,7 @@ function generateTrackingId() {
 app.use(cors());
 app.use(express.json());
 
-const verifyFBToken = async(req, res, next) => {
+const verifyFBToken = async (req, res, next) => {
   const token = req.headers?.authorization;
 
   //?validate if token has or not
@@ -36,19 +36,19 @@ const verifyFBToken = async(req, res, next) => {
     });
   }
 
-try {
-  const idToken = token.split(" ")[1]
-  const decode = await admin.auth().verifyIdToken(idToken)
-  console.log('decoded in the token-->',decode)
-  req.decoded_email = decode.email;
+  try {
+    const idToken = token.split(" ")[1];
+    const decode = await admin.auth().verifyIdToken(idToken);
+    console.log("decoded in the token-->", decode);
+    req.decoded_email = decode.email;
 
-  next();
-} catch (error) {
-  return res.status(401).json({
-    status: false,
-    message: "Unauthorized access"
-  })
-}
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      status: false,
+      message: "Unauthorized access",
+    });
+  }
 };
 
 const uri = process.env.URI;
@@ -73,8 +73,49 @@ async function run() {
     await client.connect();
 
     const db = client.db("zapShift_Db");
+    const usersCollection = db.collection("users");
     const parcelsCollection = db.collection("parcels");
     const paymentInfoCollection = db.collection("paymentInfo");
+
+    //? user related apis
+    app.post("/users", async (req, res) => {
+      try {
+        const user = req.body;
+
+        //? validate user email and name
+        if(!user?.email || !user?.displayName) {
+          return res.status(400).json({
+            status: false,
+            message: "User email and name is Required",
+          })
+        }
+
+        const existingUser = await usersCollection.findOne({email: user.email})
+        //? validate to duplicate users
+        if(existingUser) {
+          return res.status(409).json({
+            status: false,
+            message: "User already exits",
+          })
+        }
+
+        user.role = "user";
+        user.createdAt = new Date();
+
+        const result = await usersCollection.insertOne(user);
+        res.status(201).json({
+          status: true,
+          message: "Create user data successfully",
+          result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to create user data",
+          error: error.message,
+        })
+      }
+    });
 
     //? parcel api for getting all the parcels
     app.get("/parcels", async (req, res) => {
@@ -315,15 +356,15 @@ async function run() {
 
         // const query = { customer_email: email };
 
-        const query = {}
-        if(email) {
+        const query = {};
+        if (email) {
           query.customer_email = email;
 
-          if(email !== req.decoded_email) {
+          if (email !== req.decoded_email) {
             return res.status(403).json({
               status: false,
-              message: "Forbidden Access"
-            })
+              message: "Forbidden Access",
+            });
           }
         }
         const result = await paymentInfoCollection
