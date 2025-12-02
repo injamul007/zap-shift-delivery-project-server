@@ -6,6 +6,14 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 3000;
 const stripe = require("stripe")(`${process.env.STRIPE_SECRET}`);
 
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./zapshift-firebase-adminsdk-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 function generateTrackingId() {
   const prefix = "PRCL"; // brand prefix
   const time = Date.now().toString(36); // compact timestamp
@@ -16,6 +24,32 @@ function generateTrackingId() {
 //? Middlewares
 app.use(cors());
 app.use(express.json());
+
+const verifyFBToken = async(req, res, next) => {
+  const token = req.headers?.authorization;
+
+  //?validate if token has or not
+  if (!token) {
+    return res.status(401).json({
+      status: false,
+      message: "Unauthorized access",
+    });
+  }
+
+try {
+  const idToken = token.split(" ")[1]
+  const decode = await admin.auth().verifyIdToken(idToken)
+  console.log('decoded in the token-->',decode)
+  req.decoded_email = decode.email;
+
+  next();
+} catch (error) {
+  return res.status(401).json({
+    status: false,
+    message: "Unauthorized access"
+  })
+}
+};
 
 const uri = process.env.URI;
 
@@ -268,25 +302,41 @@ async function run() {
     });
 
     //? payment history related apis
-    app.get("/payment-history", async (req, res) => {
+    app.get("/payment-history", verifyFBToken, async (req, res) => {
       try {
         const email = req.query.email;
-        //? Email validation
-        if(!email) {
-          return res.status(400).json({
-            status: false,
-            message: "Email is Required"
-          })
+        // //? Email validation
+        // if (!email) {
+        //   return res.status(400).json({
+        //     status: false,
+        //     message: "Email is Required",
+        //   });
+        // }
+
+        // const query = { customer_email: email };
+
+        const query = {}
+        if(email) {
+          query.customer_email = email;
+
+          if(email !== req.decoded_email) {
+            return res.status(403).json({
+              status: false,
+              message: "Forbidden Access"
+            })
+          }
         }
-        const query = {customer_email: email}
-        const result = await paymentInfoCollection.find(query).toArray();
+        const result = await paymentInfoCollection
+          .find(query)
+          .sort({ paid_At: -1 })
+          .toArray();
 
         //? validate result is exits or not
-        if(result.length === 0) {
+        if (result.length === 0) {
           return res.status(404).json({
             status: false,
             message: "Payment history not found",
-          })
+          });
         }
         res.status(200).json({
           status: true,
@@ -298,7 +348,7 @@ async function run() {
           status: false,
           message: "Failed to get payment history by email",
           error: error.message,
-        })
+        });
       }
     });
 
