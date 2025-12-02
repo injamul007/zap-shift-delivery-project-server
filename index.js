@@ -207,7 +207,7 @@ async function run() {
 
         const trackingId = generateTrackingId();
 
-        const transactionId = session?.payment_intent
+        const transactionId = session?.payment_intent;
         const query = { transactionId: transactionId };
 
         const paymentExits = await paymentInfoCollection.findOne(query);
@@ -264,6 +264,41 @@ async function run() {
           message: "Failed to Patch payment",
           error: error.message,
         });
+      }
+    });
+
+    //? payment history related apis
+    app.get("/payment-history", async (req, res) => {
+      try {
+        const email = req.query.email;
+        //? Email validation
+        if(!email) {
+          return res.status(400).json({
+            status: false,
+            message: "Email is Required"
+          })
+        }
+        const query = {customer_email: email}
+        const result = await paymentInfoCollection.find(query).toArray();
+
+        //? validate result is exits or not
+        if(result.length === 0) {
+          return res.status(404).json({
+            status: false,
+            message: "Payment history not found",
+          })
+        }
+        res.status(200).json({
+          status: true,
+          message: "Get payment history by email successful",
+          result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to get payment history by email",
+          error: error.message,
+        })
       }
     });
 
