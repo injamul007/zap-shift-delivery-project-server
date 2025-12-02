@@ -6,6 +6,13 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 3000;
 const stripe = require("stripe")(`${process.env.STRIPE_SECRET}`);
 
+function generateTrackingId() {
+  const prefix = "PRCL"; // brand prefix
+  const time = Date.now().toString(36); // compact timestamp
+  const rand = Math.random().toString(36).slice(2, 8); // 6-chars random
+  return `${prefix}-${time}-${rand.toUpperCase()}`;
+}
+
 //? Middlewares
 app.use(cors());
 app.use(express.json());
@@ -33,6 +40,7 @@ async function run() {
 
     const db = client.db("zapShift_Db");
     const parcelsCollection = db.collection("parcels");
+    const paymentInfoCollection = db.collection("paymentInfo");
 
     //? parcel api for getting all the parcels
     app.get("/parcels", async (req, res) => {
@@ -139,11 +147,16 @@ async function run() {
         const paymentInfo = req.body;
 
         //? validate payment cost
-        if(!paymentInfo || !paymentInfo.cost || isNaN(paymentInfo.cost) || paymentInfo.cost <= 0) {
+        if (
+          !paymentInfo ||
+          !paymentInfo.cost ||
+          isNaN(paymentInfo.cost) ||
+          paymentInfo.cost <= 0
+        ) {
           return res.status(400).json({
             status: false,
-            message: "Invalid Payment cost type"
-          })
+            message: "Invalid Payment cost type",
+          });
         }
 
         const amount = Math.round(Number(paymentInfo.cost) * 100);
@@ -151,11 +164,11 @@ async function run() {
           line_items: [
             {
               price_data: {
-                currency: 'usd',
+                currency: "usd",
                 unit_amount: amount,
                 product_data: {
-                  name: paymentInfo?.parcelName,
-                }
+                  name: `Please pay for: ${paymentInfo?.parcelName}`,
+                },
               },
               quantity: 1,
             },
@@ -164,56 +177,95 @@ async function run() {
           customer_email: paymentInfo?.senderEmail || undefined,
           metadata: {
             parcelId: paymentInfo?.parcelId || "",
+            parcelName: paymentInfo?.parcelName || undefined,
           },
           success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
         });
-        console.log(session)
+        console.log(session);
         res.status(201).json({
           status: true,
           message: "Payment checkout session created Successful",
-          url : session.url,
-        })
+          url: session.url,
+        });
       } catch (error) {
         res.status(500).json({
           status: false,
           message: "Failed to create payment checkout session api",
           error: error.message,
-        })
+        });
       }
     });
 
-    //? patch payment data 
-    app.patch("/payment-success", async(req,res) => {
+    //? patch payment data
+    app.patch("/payment-success", async (req, res) => {
       try {
         const sessionId = req.query.session_id;
-        
-        const session = await stripe.checkout.sessions.retrieve(sessionId)
-        console.log(session)
 
-        if(session.payment_status === "paid") {
-          const id = session?.metadata?.parcelId
-          const query = {_id: new ObjectId(id)}
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        console.log(session);
+
+        const trackingId = generateTrackingId();
+
+        const transactionId = session?.payment_intent
+        const query = { transactionId: transactionId };
+
+        const paymentExits = await paymentInfoCollection.findOne(query);
+
+        //? validate payment is exits or not
+        if (paymentExits) {
+          return res.status(409).json({
+            status: false,
+            message: "transaction id already exits",
+            transactionId,
+            trackingId: paymentExits.trackingId,
+          });
+        }
+
+        if (session.payment_status === "paid") {
+          const id = session?.metadata?.parcelId;
+          const query = { _id: new ObjectId(id) };
           const update = {
             $set: {
               paymentStatus: "paid",
-            }
-          }
-          const result = await parcelsCollection.updateOne(query, update)
+              trackingId: trackingId,
+            },
+          };
+          const result = await parcelsCollection.updateOne(query, update);
+
+          const paymentInfo = {
+            parcelId: session.metadata.parcelId,
+            parcelName: session.metadata.parcelName,
+            amount: session.amount_total / 100,
+            currency: session.currency,
+            customer_email: session.customer_email,
+            transactionId: session?.payment_intent,
+            paymentStatus: session.payment_status,
+            paid_At: new Date(),
+            trackingId: trackingId,
+          };
+
+          const resultPayment = await paymentInfoCollection.insertOne(
+            paymentInfo
+          );
+
           res.status(200).json({
             status: true,
-            message: "Payment Patch successful",
-            result,
-          })
+            message: "Payment Patch and create successful",
+            modifiedParcel: result,
+            trackingId: trackingId,
+            transactionId: session?.payment_intent,
+            paymentInfo: resultPayment,
+          });
         }
       } catch (error) {
         res.status(500).json({
           status: false,
           message: "Failed to Patch payment",
           error: error.message,
-        })
+        });
       }
-    })
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log("Successfully connected to MongoDB!");
