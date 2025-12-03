@@ -468,6 +468,19 @@ async function run() {
           },
         };
         const result = await ridersCollection.updateOne(query, update);
+
+        //? filter and update riders role with email in usersCollections
+        if(status === "approved") {
+          const email = req.body.email;
+          const userEmailQuery = {email};
+          const updateUser = {
+            $set: {
+              role: "rider"
+            }
+          }
+          await usersCollection.updateOne(userEmailQuery, updateUser)
+        }
+
         res.status(200).json({
           status: true,
           message: "Riders Status Updated Successfully",
