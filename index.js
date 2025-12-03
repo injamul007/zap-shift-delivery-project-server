@@ -76,6 +76,7 @@ async function run() {
     const usersCollection = db.collection("users");
     const parcelsCollection = db.collection("parcels");
     const paymentInfoCollection = db.collection("paymentInfo");
+    const ridersCollection = db.collection("riders");
 
     //? user related apis
     app.post("/users", async (req, res) => {
@@ -83,20 +84,22 @@ async function run() {
         const user = req.body;
 
         //? validate user email and name
-        if(!user?.email || !user?.displayName) {
+        if (!user?.email || !user?.displayName) {
           return res.status(400).json({
             status: false,
             message: "User email and name is Required",
-          })
+          });
         }
 
-        const existingUser = await usersCollection.findOne({email: user.email})
+        const existingUser = await usersCollection.findOne({
+          email: user.email,
+        });
         //? validate to duplicate users
-        if(existingUser) {
+        if (existingUser) {
           return res.status(409).json({
             status: false,
             message: "User already exits",
-          })
+          });
         }
 
         user.role = "user";
@@ -113,7 +116,7 @@ async function run() {
           status: false,
           message: "Failed to create user data",
           error: error.message,
-        })
+        });
       }
     });
 
@@ -390,6 +393,92 @@ async function run() {
           message: "Failed to get payment history by email",
           error: error.message,
         });
+      }
+    });
+
+    //? riders related apis
+
+    app.get("/riders", async (req, res) => {
+      try {
+        const query = {};
+
+        if (req.query.status) {
+          query.status = req.query.status;
+        }
+
+        const result = await ridersCollection.find(query).toArray();
+        res.status(200).json({
+          status: true,
+          message: "Get all the riders data successfully",
+          result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to Get all the riders data",
+          error: error.message,
+        });
+      }
+    });
+
+    app.post("/riders", async (req, res) => {
+      try {
+        const rider = req.body;
+
+        //? validate rider
+        if (
+          !rider ||
+          !rider.name ||
+          !rider.email ||
+          !rider.nidNumber ||
+          !rider.licenseNumber
+        ) {
+          return res.status(400).json({
+            status: false,
+            message:
+              "Riders Name, NID Number and License Number information are required",
+          });
+        }
+        rider.status = "pending";
+        rider.createdAt = new Date();
+
+        const result = await ridersCollection.insertOne(rider);
+        res.status(201).json({
+          status: true,
+          message: "Riders data created successfully",
+          result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to create riders data",
+          error: error.message,
+        });
+      }
+    });
+
+    app.patch("/riders/:id", verifyFBToken, async (req, res) => {
+      try {
+        const riderId = req.params.id;
+        const query = { _id: new ObjectId(riderId) };
+        const status = req.body.status
+        const update = {
+          $set: {
+            status: status,
+          },
+        };
+        const result = await ridersCollection.updateOne(query, update);
+        res.status(200).json({
+          status: true,
+          message: "Riders Status Updated Successfully",
+          result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to update Riders data",
+          error: error.message,
+        })
       }
     });
 
