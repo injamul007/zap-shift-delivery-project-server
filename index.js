@@ -79,6 +79,24 @@ async function run() {
     const ridersCollection = db.collection("riders");
 
     //? user related apis
+    app.get("/users", verifyFBToken, async (req, res) => {
+      try {
+        const cursor = usersCollection.find();
+        const result = await cursor.toArray();
+        res.status(200).json({
+          status: true,
+          message: "Get all the users data successfully",
+          result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to load all the users data",
+          error: error.message,
+        });
+      }
+    });
+
     app.post("/users", async (req, res) => {
       try {
         const user = req.body;
@@ -117,6 +135,31 @@ async function run() {
           message: "Failed to create user data",
           error: error.message,
         });
+      }
+    });
+
+    app.patch("/users/:id", async (req, res) => {
+      try {
+        const userId = req.params.id;
+        const query = { _id: new ObjectId(userId) };
+        const roleInfo = req.body;
+        const updateDoc = {
+          $set: {
+            role: roleInfo.role,
+          },
+        };
+        const result = await usersCollection.updateOne(query, updateDoc);
+        res.status(200).json({
+          status: true,
+          message: "Users role Updated successfully",
+          result,
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to update role",
+          error: error.message,
+        })
       }
     });
 
@@ -461,7 +504,7 @@ async function run() {
       try {
         const riderId = req.params.id;
         const query = { _id: new ObjectId(riderId) };
-        const status = req.body.status
+        const status = req.body.status;
         const update = {
           $set: {
             status: status,
@@ -470,15 +513,15 @@ async function run() {
         const result = await ridersCollection.updateOne(query, update);
 
         //? filter and update riders role with email in usersCollections
-        if(status === "approved") {
+        if (status === "approved") {
           const email = req.body.email;
-          const userEmailQuery = {email};
+          const userEmailQuery = { email };
           const updateUser = {
             $set: {
-              role: "rider"
-            }
-          }
-          await usersCollection.updateOne(userEmailQuery, updateUser)
+              role: "rider",
+            },
+          };
+          await usersCollection.updateOne(userEmailQuery, updateUser);
         }
 
         res.status(200).json({
@@ -491,7 +534,7 @@ async function run() {
           status: false,
           message: "Failed to update Riders data",
           error: error.message,
-        })
+        });
       }
     });
 
