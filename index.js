@@ -78,10 +78,38 @@ async function run() {
     const paymentInfoCollection = db.collection("paymentInfo");
     const ridersCollection = db.collection("riders");
 
+    //? middleware to verify admin before allowing admin activity with db access
+    //? Must be used after verifyFBToken middleware
+    const verifyAdmin = async (req, res, next) => {
+      try {
+        const email = req.decoded_email;
+        const query = { email };
+        const user = await usersCollection.findOne(query);
+        if (!user || user.role !== "admin") {
+          return res.status(403).json({
+            status: false,
+            message: "Forbidden Access",
+          });
+        }
+        next();
+      } catch (error) {
+        console.log(error.message);
+      }
+    };
+
     //? user related apis
     app.get("/users", verifyFBToken, async (req, res) => {
       try {
-        const cursor = usersCollection.find();
+        const search = req.query.searchUser;
+        const query = {}
+        if(search) {
+          query.$or = [
+            {displayName: {$regex: search, $options: 'i'}},
+            {email: {$regex: search, $options: 'i'}}
+          ]
+        }
+
+        const cursor = usersCollection.find(query).sort({createdAt: -1}).limit(10);
         const result = await cursor.toArray();
         res.status(200).json({
           status: true,
@@ -92,6 +120,27 @@ async function run() {
         res.status(500).json({
           status: false,
           message: "Failed to load all the users data",
+          error: error.message,
+        });
+      }
+    });
+
+    app.get("/users/:id");
+
+    app.get("/users/:email/role", async (req, res) => {
+      try {
+        const email = req.params.email;
+        const query = { email };
+        const user = await usersCollection.findOne(query);
+        res.status(200).json({
+          status: true,
+          message: "Get user by email and role is successful",
+          result: user?.role || "user",
+        });
+      } catch (error) {
+        res.status(500).json({
+          status: false,
+          message: "Failed to get user by email and role",
           error: error.message,
         });
       }
@@ -138,30 +187,35 @@ async function run() {
       }
     });
 
-    app.patch("/users/:id", async (req, res) => {
-      try {
-        const userId = req.params.id;
-        const query = { _id: new ObjectId(userId) };
-        const roleInfo = req.body;
-        const updateDoc = {
-          $set: {
-            role: roleInfo.role,
-          },
-        };
-        const result = await usersCollection.updateOne(query, updateDoc);
-        res.status(200).json({
-          status: true,
-          message: "Users role Updated successfully",
-          result,
-        });
-      } catch (error) {
-        res.status(500).json({
-          status: false,
-          message: "Failed to update role",
-          error: error.message,
-        })
+    app.patch(
+      "/users/:id/role",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const userId = req.params.id;
+          const query = { _id: new ObjectId(userId) };
+          const roleInfo = req.body;
+          const updateDoc = {
+            $set: {
+              role: roleInfo.role,
+            },
+          };
+          const result = await usersCollection.updateOne(query, updateDoc);
+          res.status(200).json({
+            status: true,
+            message: "Users role Updated successfully",
+            result,
+          });
+        } catch (error) {
+          res.status(500).json({
+            status: false,
+            message: "Failed to update role",
+            error: error.message,
+          });
+        }
       }
-    });
+    );
 
     //? parcel api for getting all the parcels
     app.get("/parcels", async (req, res) => {
@@ -500,7 +554,7 @@ async function run() {
       }
     });
 
-    app.patch("/riders/:id", verifyFBToken, async (req, res) => {
+    app.patch("/riders/:id", verifyFBToken, verifyAdmin, async (req, res) => {
       try {
         const riderId = req.params.id;
         const query = { _id: new ObjectId(riderId) };
